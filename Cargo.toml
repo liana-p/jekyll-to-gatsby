@@ -1,7 +1,16 @@
 [package]
-name = "update-jekyll-content-to-gatsby"
+name = "jekyll-to-gatsby"
+authors = ["Liana Pigeot"]
+license = "MIT"
+description = "A tool to batch update Jekyll markdown posts to work with Gatsby, adding their date in the frontmatter block"
+readme = "README.md"
+homepage = "https://github.com/nialna/jekyll-to-gatsby"
+repository = "https://github.com/nialna/jekyll-to-gatsby"
+keywords = ["cli", "jekyll", "gatsby", "markdown", "frontmatter"]
 version = "0.1.0"
 edition = "2018"
+categories = ["command-line-utilities"]
+exclude = ["/output"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
