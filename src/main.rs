@@ -9,6 +9,7 @@ use lazy_static::lazy_static;
 lazy_static! {
     static ref FRONTMATTER: regex::Regex = Regex::new(r"---[\n\r]").unwrap();
     static ref DATE_REGEX: regex::Regex = Regex::new(r"(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})-").unwrap();
+    static ref URL_REGEX: regex::Regex = Regex::new(r"\{\{\s*site.url\s*\}\}\s*\{\{\s*site.baseurl\s*\}\}").unwrap();
 }
 
 fn main() -> CliResult {
@@ -22,7 +23,7 @@ fn main() -> CliResult {
     let results = files
         .par_iter()
         .map(|path| {
-            transform_markdown(path, &args.results_dir)
+            transform_markdown(path, &args.results_dir, args.no_url_replace)
             .map_err(|e| error!("Failed to process {} ({})", path.display(), e))
         });
     let results_count: i32 = results
@@ -47,6 +48,7 @@ fn create_results_dir(results_dir: &Path, clean_dir: &bool) -> Result<(), Error>
 fn transform_markdown(
     original: &Path,
     results_dir: &str,
+    no_url_replace: bool,
 ) -> Result<(), Error> {
     println!("Processing {}", original.display());
     let file_name = original
@@ -70,9 +72,12 @@ fn transform_markdown(
             .join("index")
             .with_extension("md");
         let content = read_file(file_name)?;
-        let result = FRONTMATTER.replace(content.as_str(), format!("---
+        let mut result = FRONTMATTER.replace(content.as_str(), format!("---
 date: \"{}\"
-", new_date));
+", new_date)).to_string();
+        if !no_url_replace {
+            result = URL_REGEX.replace_all(&result, "").to_string();
+        }
         write_to_file(output_path, &result)?;
         info!("Processed {} successfully!", original.display());
         Ok(())
@@ -92,15 +97,19 @@ struct Cli {
     no_folders: bool,
     // Add a positional argument that the user has to supply:
     /// The file to read
-    #[structopt(default_value = "**/*.md")]
+    #[structopt(default_value = "**/*.md", help = "Custom glob pattern for finding markdown files.")]
     pattern: String,
     /// Where do you want to save the thumbnails?
-    #[structopt(long = "output", short = "o", default_value = "output")]
+    #[structopt(long = "output", short = "o", default_value = "output", help = "Custom output directory")]
     results_dir: String,
 
     /// Should we clean the output directory?
-    #[structopt(long="clean-dir")]
+    #[structopt(long="clean-dir", help = "Clean output directory before starting")]
     clean_dir: bool,
+
+    /// Replace url paths
+    #[structopt(long="no_url_replace", help = "Don't replace the jekyll {{site.baseurl}} syntax in URLs")]
+    no_url_replace: bool,
 
     // Quick and easy logging setup you get for free with quicli
     #[structopt(flatten)]
