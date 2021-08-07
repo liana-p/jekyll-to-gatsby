@@ -13,6 +13,7 @@ lazy_static! {
     static ref REMOVE_EXTENSION: regex::Regex = Regex::new(r"\..*").unwrap();
 }
 
+
 fn main() -> CliResult {
     let args: Cli = Cli::from_args();
     args.verbosity.setup_env_logger(&env!("CARGO_PKG_NAME"))?;
