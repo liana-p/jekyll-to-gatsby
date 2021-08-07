@@ -16,15 +16,16 @@ lazy_static! {
 fn main() -> CliResult {
     let args: Cli = Cli::from_args();
     args.verbosity.setup_env_logger(&env!("CARGO_PKG_NAME"))?;
+    let ctx = Context::from_cli(args);
 
-    let files = glob(&args.pattern)?;
-    let results_dir = std::path::Path::new(&args.results_dir);
-    create_results_dir(results_dir, &args.clean_dir)?;
-    info!("Saving {} generated files into {:?}...", files.len(), args.results_dir);
+    let files = glob(&ctx.pattern)?;
+    let results_dir = std::path::Path::new(&ctx.results_dir);
+    create_results_dir(results_dir, &ctx.clean_dir)?;
+    info!("Saving {} generated files into {:?}...", files.len(), ctx.results_dir);
     let results = files
         .par_iter()
         .map(|path| {
-            transform_markdown(path, &args)
+            transform_markdown(path, &ctx)
             .map_err(|e| error!("Failed to process {} ({})", path.display(), e))
         });
     let results_count: i32 = results
@@ -48,24 +49,24 @@ fn create_results_dir(results_dir: &Path, clean_dir: &bool) -> Result<(), Error>
 
 fn transform_markdown(
     original: &Path,
-    args: &Cli,
+    ctx: &Context,
 ) -> Result<(), Error> {
     println!("Processing {}", original.display());
     let file_name_os = original
         .file_name()
         .ok_or_else(|| format_err!("couldn't read file name of {:?}", original))?;
     let file_name = file_name_os.to_str().unwrap().to_string();
-    let file_destination = setup_file_destination(file_name, args)?;
+    let file_destination = setup_file_destination(file_name, ctx)?;
     let content = read_file(file_name_os)?;
     let mut new_frontmatter = format!("---
 date: \"{}\"
 ", file_destination.new_date);
-    if !args.no_slug {
+    if !ctx.no_slug {
         new_frontmatter = format!("{}slug: \"{}\"
 ", new_frontmatter, file_destination.slug);
     }
     let mut result = FRONTMATTER.replace(content.as_str(), new_frontmatter).to_string();
-    if !args.no_url_replace {
+    if !ctx.no_url_replace {
         result = URL_REGEX.replace_all(&result, "").to_string();
     }
     write_to_file(file_destination.output_path, &result)?;
@@ -81,7 +82,7 @@ struct FileDestinationResult {
 }
 fn setup_file_destination(
     file_name: String,
-    args: &Cli,
+    ctx: &Context,
 ) -> Result<FileDestinationResult, Error> {
     let date_matches = DATE_REGEX.captures(&file_name);
     if let Some(date_match) = &date_matches {
@@ -93,20 +94,20 @@ fn setup_file_destination(
         let name_without_extension = REMOVE_EXTENSION.replace(&file_name, "").to_string();
         let name_without_date = DATE_REGEX.replace(&name_without_extension, "").to_string();
         let new_name: String;
-        if args.keep_dates {
+        if ctx.keep_dates {
             new_name = name_without_extension;
         } else {
             new_name = String::from(&name_without_date);
         }
         println!("New file name {}", new_name);
-        if !args.no_folders {
-            let new_dir_path = PathBuf::from(&args.results_dir)
+        if !ctx.no_folders {
+            let new_dir_path = PathBuf::from(&ctx.results_dir)
                 .join(&new_name);
             create_results_dir(&new_dir_path, &false)?;
         }
-        let mut output_path = PathBuf::from(&args.results_dir)
+        let mut output_path = PathBuf::from(&ctx.results_dir)
             .join(&new_name);
-        if !args.no_folders {
+        if !ctx.no_folders {
             output_path = output_path.join("index");
         }
         output_path = output_path.with_extension("md");
@@ -151,3 +152,31 @@ struct Cli {
     #[structopt(flatten)]
     verbosity: Verbosity,
 }
+
+
+// Annoying code duplication because we can't instantiate Cli for unit tests due to Verbosity being private...
+struct Context {
+    no_folders: bool,
+    pattern: String,
+    results_dir: String,
+    clean_dir: bool,
+    keep_dates: bool,
+    no_url_replace: bool,
+    no_slug: bool,
+}
+
+impl Context {
+    pub fn from_cli(cli: Cli) -> Context {
+        Context {
+            no_folders: cli.no_folders,
+            pattern: cli.pattern,
+            results_dir: cli.results_dir,
+            clean_dir: cli.clean_dir,
+            keep_dates: cli.keep_dates,
+            no_url_replace: cli.no_url_replace,
+            no_slug: cli.no_slug,
+        }
+    }
+}
+#[cfg(test)]
+mod test;
