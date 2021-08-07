@@ -21,10 +21,6 @@ jekyll-to-gatsby
 
 The new files should appear in the `output` folder
 
-## Options
-
-Use `jekyll-to-gatsby --help`
-
 ## What it does
 
 Given a directory of Jekyll markdown post files, with a structure like this:
@@ -47,4 +43,52 @@ New structure (based on the structure used in the [Gatsby Starter Blog](https://
     - index.md
   - another-post
     - index.md
+```
+
+## Options
+
+Use `jekyll-to-gatsby --help`
+
+```
+Read some lines of a file Get first n lines of a file
+
+USAGE:
+    jekyll-to-gatsby [FLAGS] [OPTIONS] [pattern]
+
+FLAGS:
+    -d, --clean-dir
+            Clean output directory before starting
+
+    -h, --help
+            Prints help information
+
+    -k, --keep-dates
+            Keep dates in file names
+
+    -f, --no-folders
+            Don't create individual folders for articles.
+
+    -s, --no-slug
+            Don't add a slug to the frontmatter header
+
+    -u, --no-url-replace
+            Don't replace the jekyll {{site.baseurl}} syntax in URLs
+
+    -V, --version
+            Prints version information
+
+    -v, --verbosity
+            Pass many times for more log output
+
+            By default, it'll only report errors. Passing `-v` one time also prints warnings, `-vv` enables info
+            logging, `-vvv` debug, and `-vvvv` trace.
+
+OPTIONS:
+    -o, --output <results_dir>
+            Custom output directory [default: output]
+
+
+ARGS:
+    <pattern>
+            Custom glob pattern for finding markdown files. [default: **/*.md]
 ```

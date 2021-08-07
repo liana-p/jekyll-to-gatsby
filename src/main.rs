@@ -10,10 +10,11 @@ lazy_static! {
     static ref FRONTMATTER: regex::Regex = Regex::new(r"---[\n\r]").unwrap();
     static ref DATE_REGEX: regex::Regex = Regex::new(r"(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})-").unwrap();
     static ref URL_REGEX: regex::Regex = Regex::new(r"\{\{\s*site.url\s*\}\}\s*\{\{\s*site.baseurl\s*\}\}").unwrap();
+    static ref REMOVE_EXTENSION: regex::Regex = Regex::new(r"\..*").unwrap();
 }
 
 fn main() -> CliResult {
-    let args = Cli::from_args();
+    let args: Cli = Cli::from_args();
     args.verbosity.setup_env_logger(&env!("CARGO_PKG_NAME"))?;
 
     let files = glob(&args.pattern)?;
@@ -23,7 +24,7 @@ fn main() -> CliResult {
     let results = files
         .par_iter()
         .map(|path| {
-            transform_markdown(path, &args.results_dir, args.no_url_replace)
+            transform_markdown(path, &args)
             .map_err(|e| error!("Failed to process {} ({})", path.display(), e))
         });
     let results_count: i32 = results
@@ -47,42 +48,76 @@ fn create_results_dir(results_dir: &Path, clean_dir: &bool) -> Result<(), Error>
 
 fn transform_markdown(
     original: &Path,
-    results_dir: &str,
-    no_url_replace: bool,
+    args: &Cli,
 ) -> Result<(), Error> {
     println!("Processing {}", original.display());
-    let file_name = original
+    let file_name_os = original
         .file_name()
         .ok_or_else(|| format_err!("couldn't read file name of {:?}", original))?;
-    let file_name_str = file_name.to_str().unwrap();
-    let date_matches = DATE_REGEX.captures(file_name_str);
+    let file_name = file_name_os.to_str().unwrap().to_string();
+    let file_destination = setup_file_destination(file_name, args)?;
+    let content = read_file(file_name_os)?;
+    let mut new_frontmatter = format!("---
+date: \"{}\"
+", file_destination.new_date);
+    if !args.no_slug {
+        new_frontmatter = format!("{}slug: \"{}\"
+", new_frontmatter, file_destination.slug);
+    }
+    let mut result = FRONTMATTER.replace(content.as_str(), new_frontmatter).to_string();
+    if !args.no_url_replace {
+        result = URL_REGEX.replace_all(&result, "").to_string();
+    }
+    write_to_file(file_destination.output_path, &result)?;
+    info!("Processed {} successfully!", original.display());
+    Ok(())
+}
+
+struct FileDestinationResult {
+    output_path: PathBuf,
+    new_name: String,
+    new_date: String,
+    slug: String,
+}
+fn setup_file_destination(
+    file_name: String,
+    args: &Cli,
+) -> Result<FileDestinationResult, Error> {
+    let date_matches = DATE_REGEX.captures(&file_name);
     if let Some(date_match) = &date_matches {
         let year = date_match.name("y").unwrap().as_str();
         let month = date_match.name("m").unwrap().as_str();
         let day = date_match.name("d").unwrap().as_str();
         // Using placeholder time since old posts don't have a time
         let new_date = format!("{}-{}-{}T22:40:32.169Z", year, month, day);
-        let new_name = DATE_REGEX.replace(file_name_str, "").to_string();
-        println!("New file name {}", new_name);
-        let new_dir_path = PathBuf::from(results_dir)
-            .join(&new_name);
-        create_results_dir(&new_dir_path, &false)?;
-        let output_path = PathBuf::from(results_dir)
-            .join(new_name)
-            .join("index")
-            .with_extension("md");
-        let content = read_file(file_name)?;
-        let mut result = FRONTMATTER.replace(content.as_str(), format!("---
-date: \"{}\"
-", new_date)).to_string();
-        if !no_url_replace {
-            result = URL_REGEX.replace_all(&result, "").to_string();
+        let name_without_extension = REMOVE_EXTENSION.replace(&file_name, "").to_string();
+        let name_without_date = DATE_REGEX.replace(&name_without_extension, "").to_string();
+        let new_name: String;
+        if args.keep_dates {
+            new_name = name_without_extension;
+        } else {
+            new_name = String::from(&name_without_date);
         }
-        write_to_file(output_path, &result)?;
-        info!("Processed {} successfully!", original.display());
-        Ok(())
+        println!("New file name {}", new_name);
+        if !args.no_folders {
+            let new_dir_path = PathBuf::from(&args.results_dir)
+                .join(&new_name);
+            create_results_dir(&new_dir_path, &false)?;
+        }
+        let mut output_path = PathBuf::from(&args.results_dir)
+            .join(&new_name);
+        if !args.no_folders {
+            output_path = output_path.join("index");
+        }
+        output_path = output_path.with_extension("md");
+        Ok(FileDestinationResult {
+            output_path,
+            new_name,
+            new_date,
+            slug: name_without_date,
+        })
     } else {
-        Err(format_err!("Couldn't find a date in file name {}", original.display()))
+        Err(format_err!("Couldn't find a date in file name {}", file_name))
     }
 }
 
@@ -91,25 +126,26 @@ date: \"{}\"
 /// Get first n lines of a file
 #[derive(Debug, StructOpt)]
 struct Cli {
-    // Add a CLI argument `--count`/-n` that defaults to 3, and has this help text:
-    /// How many lines to get
-    #[structopt(long = "no-folders", short = "nf", help = "Don't create individual folders for articles.")]
+    #[structopt(long = "no-folders", short = "f", help = "Don't create individual folders for articles.")]
     no_folders: bool,
-    // Add a positional argument that the user has to supply:
-    /// The file to read
+
     #[structopt(default_value = "**/*.md", help = "Custom glob pattern for finding markdown files.")]
     pattern: String,
-    /// Where do you want to save the thumbnails?
+
     #[structopt(long = "output", short = "o", default_value = "output", help = "Custom output directory")]
     results_dir: String,
 
-    /// Should we clean the output directory?
-    #[structopt(long="clean-dir", help = "Clean output directory before starting")]
+    #[structopt(long="clean-dir", short = "d", help = "Clean output directory before starting")]
     clean_dir: bool,
 
-    /// Replace url paths
-    #[structopt(long="no_url_replace", help = "Don't replace the jekyll {{site.baseurl}} syntax in URLs")]
+    #[structopt(long="keep-dates", short = "k", help = "Keep dates in file names")]
+    keep_dates: bool,
+
+    #[structopt(long="no-url-replace", short = "u", help = "Don't replace the jekyll {{site.baseurl}} syntax in URLs")]
     no_url_replace: bool,
+
+    #[structopt(long="no-slug", short = "s", help = "Don't add a slug to the frontmatter header")]
+    no_slug: bool,
 
     // Quick and easy logging setup you get for free with quicli
     #[structopt(flatten)]
