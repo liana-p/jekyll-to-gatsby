@@ -3,7 +3,7 @@
 [![Build Status](https://app.travis-ci.com/nialna/jekyll-to-gatsby.svg?branch=main)](https://app.travis-ci.com/nialna/jekyll-to-gatsby)
 [![Build status](https://ci.appveyor.com/api/projects/status/naokx043kaiigche/branch/main?svg=true)](https://ci.appveyor.com/project/nialna/jekyll-to-gatsby/branch/main)
 
-CLI tool for batch updating jekyll markdown content files to markdown files useable by Gatsby (changing the date and slug)
+CLI tool for batch updating jekyll markdown content files to markdown files useable by Gatsby (changing the date and slug). View on [crates.io](https://crates.io/crates/jekyll-to-gatsby)
 
 ## Usage
 
